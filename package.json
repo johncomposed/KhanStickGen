@@ -1,0 +1,17 @@
+{
+  "name": "kastickgen",
+  "version": "0.0.1",
+  "description": "A simple cli to design, download, and build your own Khan Academy on a Stick",
+  "author": "John Williams",
+  "engines": {
+    "node": ">=0.10"
+  },
+  "dependencies": {
+    "commander": "~2.2.0",
+    "request": "~2.36.0",
+    "harp": "?"
+  },
+  "bin": {
+    "kastickgen": "kasgen.js"
+  }
+}
