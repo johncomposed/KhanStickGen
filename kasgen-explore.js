@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 
+var http = require('http');
+var fs = require('fs');
 var program = require('commander');
 var inquirer = require("inquirer");
 
-var topicsJSON = require('./data/topics.json');
-var videosSize = require('./data/video_file_sizes.json');
+var sizeTopicsJSON = require('./data/sizeTopics.json');
+
 
 /** 
 Menu Functions
@@ -17,17 +19,19 @@ Command and argument
 
 
 **/
+// Main program
+//Command and arguments 
+program
+  .option('-f, --force-download', 'Forces download of all selected content, even if already cached')
+  .option('-i, --input-file [file]', 'Specify an already-built output. Good for picking up where you left off')
+  .option('-o, --output-file [file]', 'Specify where you should build the output file', "content.json")
+  .parse(process.argv);
+
+var rootKids = sizeTopicsJSON.children;
+mainMenu([]);
+
 
 // JSON Helper Functions
-
-
-function getChildren(node) {
-  var kids = [];
-  for(var i = 0, l = node.children.length; i < l; i++) {
-    kids.push(node['children'][i]);
-  }
-  return kids;
-}
 
 function getVals(arr, val) {
   var vals = [];
@@ -43,11 +47,10 @@ function objFromVal(arr, key, val) {
   }
 }
 
-
 function objArrFromValArr(arr, key, valArr) {
   var objects = [];
   for(var i = 0, l = valArr.length; i < l; i++) {
-    objects.push(objectByKeyVal(arr, key, valArr[i]));
+    objects.push(objFromVal(arr, key, valArr[i]));
   }
   return objects;
 }
@@ -66,7 +69,6 @@ function mainMenu(selection) {
     message: "Would you like to:",
     choices: [
         "Add more content to selection",
-        "Remove content from selection",
         "Download currently selected content",
         "Exit without downloading"
       ]
@@ -83,10 +85,7 @@ function mainMenu(selection) {
   }
 ], function( answers ) {
     if ( answers.main === "Add more content to selection" ) {
-      add(selection, ROOT);
-    } else if ( answers.main === "Remove content from selection" ) {
-      console.log('Not implemented yet, sorry');
-      mainMenu(selection);
+      add(selection, rootKids);
     } else if ( answers.main === "Download currently selected content" ) {
       download(selection);
     } else {
@@ -127,23 +126,77 @@ function add(selection, input) {
             }
     }
   ], function( answers ) {
+        var chosenObj = objFromVal(input, 'title', answers.choose);
         if ( answers.choose === "Back to main menu" ) {
           mainMenu(selection);
         } else if ( answers.choose === "Back to root categories" ) {
-          add(selection, ROOT);
+          add(selection, rootKids);
         } else if (answers.choose === "Add (sub)category to selection" ) {
-          selection.push.apply(selection, objFromVal(input, 'title', answers.select));
-          add(selection, ROOT);
+          var selectArr = objArrFromValArr(input, 'title', answers.select); 
+          selection.push.apply(selection, selectArr);
+          console.log(); //New line for readability
+          add(selection, rootKids);
         } else {
-          add(selection, getChildren(objFromVal(input, 'title', answers.choose))); //TODO: Parent
+          if (!chosenObj.children[0].children) {
+            console.log('Lowest subtopic reached!');
+            add(selection, input);
+          } else add(selection, chosenObj['children']);
         }
       }
   );
 }
 
-// selection 
-function download(selection) {
-  console.log("Download " + getVals(selection, 'title').join('; '));
+// Downloader Helper Functions
+function downloadVideo(obj, dir, callback) {
+    var url = obj['download_urls'].mp4;
+    var title = obj.title;
+    var dest = dir + obj.id + '.mp4'
+
+    var file = fs.createWriteStream(dest);
+    var request = http.get(url, function (response) {
+        response.pipe(file);
+        //percent downloaded
+        file.on('data', function(chunk) {
+          file.write(chunk);
+          len += chunk.length;
+          var percent = (len / file.headers['content-length']) * 100;
+          console.log(title + ": " + percent + 'downloaded')
+        });
+        file.on('finish', function () {
+            console.log(title + ' succesfully downloaded!');
+            file.close(callback); // close() is async, call callback after close completes.
+        });
+        file.on('error', function (err) {
+            fs.unlink(dest); // Delete the file async. (But we don't check the result)
+            if (callback)
+                callback(err.message);
+        });
+    });
 }
+
+function videosFromSelection(arr) {
+  var videoArr = [];
+  for(var i = 0, l = arr.length; i < l; i++) {
+    if (arr[i].kind === 'Video') {
+      videoArr.push(arr[i]);
+    } else if (arr[i].children) {
+      videoArr.push.apply(videoArr, videosFromSelection(arr[i].children));
+    }
+  }
+  return videoArr;
+}
+
+
+// The actual downloader
+function download(selection) {
+  var videos = videosFromSelection(selection);
+  console.log("Downloading " + getVals(selection, 'title').join('; '));
+
+  for(var i = 0, l = videos.length; i < l; i++) {
+    downloadVideo(videos[i], 'cache/');
+  }
+}
+
+
 
 

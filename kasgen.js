@@ -11,3 +11,5 @@ program
   .command('explore', 'Explore some junk')
   .command('update', 'search with optional query')
   .parse(process.argv);
+
+if (!program.args.length) program.help();

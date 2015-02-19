@@ -1,0 +1,5 @@
+
+cache/*
+testcache/*
+
+npm-debug.log
