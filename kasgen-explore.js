@@ -6,6 +6,9 @@ var program = require('commander');
 var inquirer = require("inquirer");
 
 var sizeTopicsJSON = require('./data/sizeTopics.json');
+var rootKids = sizeTopicsJSON.children;
+
+var testSelection = sizeTopicsJSON.children[0].children[0];
 
 
 /** 
@@ -25,10 +28,13 @@ program
   .option('-f, --force-download', 'Forces download of all selected content, even if already cached')
   .option('-i, --input-file [file]', 'Specify an already-built output. Good for picking up where you left off')
   .option('-o, --output-file [file]', 'Specify where you should build the output file', "content.json")
+  .option('-s, --selection', 'Plug in a selection arr, good for testing')
   .parse(process.argv);
 
-var rootKids = sizeTopicsJSON.children;
-mainMenu([]);
+
+if (program.selection) {
+  mainMenu([testSelection]);
+} else mainMenu([]);
 
 
 // JSON Helper Functions
@@ -76,7 +82,7 @@ function mainMenu(selection) {
   {
     type: "confirm",
     name: "writeFile",
-    message: "Do you still want to create a content.json file? This might break things.",
+    message: "Do you still want to create a dummy harp install? This might break things.",
     default: false,
     when: function( answers ) {
       return answers.main === "Exit without downloading";
@@ -88,8 +94,9 @@ function mainMenu(selection) {
       add(selection, rootKids);
     } else if ( answers.main === "Download currently selected content" ) {
       download(selection);
+      createHarp(selection);
     } else {
-      if (answers.writeFile) console.log("lol not implemented yet");
+      if (answers.writeFile) createHarp(selection);
     }
   });
 }
@@ -103,9 +110,9 @@ function add(selection, input) {
   var line = new inquirer.Separator();
   var inputTitles = getVals(input, 'title');
   if (input[0]['id'] === 'math') {
-    var inputChoose = inputTitles.concat([line,"Add (sub)category to selection","Back to main menu"]);
+    inputChoose = inputTitles.concat([line,"Add (sub)category to selection","Back to main menu"]);
   } else {
-    var inputChoose = inputTitles.concat([line,"Add (sub)category to selection","Back to root categories"]);
+    inputChoose = inputTitles.concat([line,"Add (sub)category to selection","Back to root categories"]);
   }
 
   console.log("Current selection: " + selectionTitles.join('; '));
@@ -137,7 +144,7 @@ function add(selection, input) {
           console.log(); //New line for readability
           add(selection, rootKids);
         } else {
-          if (!chosenObj.children[0].children) {
+          if (chosenObj['ancestor_ids'].length > 3) {
             console.log('Lowest subtopic reached!');
             add(selection, input);
           } else add(selection, chosenObj['children']);
@@ -146,33 +153,13 @@ function add(selection, input) {
   );
 }
 
-// Downloader Helper Functions
-function downloadVideo(obj, dir, callback) {
-    var url = obj['download_urls'].mp4;
-    var title = obj.title;
-    var dest = dir + obj.id + '.mp4'
 
-    var file = fs.createWriteStream(dest);
-    var request = http.get(url, function (response) {
-        response.pipe(file);
-        //percent downloaded
-        file.on('data', function(chunk) {
-          file.write(chunk);
-          len += chunk.length;
-          var percent = (len / file.headers['content-length']) * 100;
-          console.log(title + ": " + percent + 'downloaded')
-        });
-        file.on('finish', function () {
-            console.log(title + ' succesfully downloaded!');
-            file.close(callback); // close() is async, call callback after close completes.
-        });
-        file.on('error', function (err) {
-            fs.unlink(dest); // Delete the file async. (But we don't check the result)
-            if (callback)
-                callback(err.message);
-        });
-    });
-}
+
+
+
+
+// Downloading and Writing Files
+
 
 function videosFromSelection(arr) {
   var videoArr = [];
@@ -187,7 +174,32 @@ function videosFromSelection(arr) {
 }
 
 
-// The actual downloader
+
+
+
+// Downloader Helper Functions
+function downloadVideo(obj, dir, callback) {
+    var url = obj['download_urls'].mp4;
+    var title = obj.title;
+    var dest = dir + obj.id + '.mp4'
+
+    var file = fs.createWriteStream(dest);
+    var request = http.get(url, function (response) {
+        response.pipe(file);
+        file.on('finish', function () {
+            console.log(title + ' succesfully downloaded!');
+            file.close(callback); // close() is async, call callback after close
+        });
+        file.on('error', function (err) {
+          fs.unlink(dest); // Delete the file async. (But don't check result)
+          if (callback) callback(err.message);
+        });
+    });
+}
+
+
+
+// Downloader
 function download(selection) {
   var videos = videosFromSelection(selection);
   console.log("Downloading " + getVals(selection, 'title').join('; '));
@@ -196,6 +208,148 @@ function download(selection) {
     downloadVideo(videos[i], 'cache/');
   }
 }
+
+
+
+// Desc Writing Helper Function
+function writeVideoDesc(obj, dir, callback) {
+  var desc = obj.description;
+  var slug = obj.slug;
+  var parentsdir = obj['ancestor_ids'].slice(3);
+  var parentPath = dir + parentsdir.join('/')
+  var oFile = parentPath + '/' + slug + '.md';
+
+  // Quick hack to make dirs
+  for(var i = 1, l = 4; i < l; i++) {
+    makeDir = dir + parentsdir.slice(0,i).join('/');
+    if (!fs.existsSync(makeDir)) fs.mkdirSync(makeDir);
+  }
+
+  fs.writeFile(oFile, desc, function(err) {
+    if(err) {
+      console.log(err);
+    } else {
+      //console.log(obj.title  + " description saved to " + oFile);
+    }
+  });
+}
+
+
+// Desc Writer
+function writeSelectionDesc(selection) {
+  var videos = videosFromSelection(selection);
+  console.log("Writing " + getVals(selection, 'title').join('; '));
+
+  for(var i = 0, l = videos.length; i < l; i++) {
+    writeVideoDesc(videos[i], 'harp/');
+  }
+}
+
+
+/*
+function insertPage(oldData, newPage) {
+  oldContent = oldData.content;
+  
+  for(var i = 0, l = oldContent.length; i <= l; i++) {
+    if (i === l) {
+      console.log('parentnoexist' + newPage.title);
+      // This parent doesn't exist
+      newParent = {};
+      newParent.name = newPage['parent_id'];
+      newParent.pages = [newPage];
+      oldContent.push(newParent);
+    } else if (oldContent[i].name === newPage.parent_id) {
+       console.log('Oh look it found something' + newPage.title);
+      oldContent[i].pages.push(newPage);
+    } else console.log('I bloody hope this works');
+  }
+  return oldData;
+}
+
+// Stupidly large writing helper function
+function writeData(obj, dir, callback) {
+  var title = obj.title;
+  var slug = obj.slug;
+  var media = obj.id;
+  var parentslug = obj['ancestor_ids'].slice(3).join('/');
+  newPage = {};
+  newPage.slug = title;
+  newPage.media = media;
+
+  var dataFile = dir + parentslug + '/_data.json'; 
+
+  fs.exists(dataFile, function(exists) {
+    if (exists) {
+      // read it as obj and push to it
+      fs.readFile(dataFile, 'utf8', function (err,data) {
+        dataObj = JSON.parse(data);
+        console.log(dataObj);
+        newDataObj = insertPage(dataObj, newPage);
+
+        fs.writeFile(dataFile, JSON.stringify(newDataObj, null, 2), function(err) {
+          if(err) console.log('Line 277' + err);
+          else {
+            //console.log("Page added to " + dataFile);
+          }
+        });
+      });
+    } else {
+      // make new object
+      dataObj = {};
+      dataObj.topslug = obj['ancestor_ids'][2];
+      dataObj.topmedia = media;
+      
+      newParent = {};
+      newParent.name = obj['parent_id'];
+      newParent.pages = [newPage];
+      dataObj.content = [newParent];
+
+      // (over)write file 
+      fs.writeFile(dataFile, JSON.stringify(dataObj, null, 2), function(err) {
+        if(err) console.log('Line 296' + err);
+        else {
+          //console.log("Page added to " + dataFile);
+        }
+      });
+    }
+  });
+}
+
+
+// Writing the selection to data.json
+function writeDataJSON(selection) {
+  var videos = videosFromSelection(selection);
+  console.log("Writing " + getVals(selection, 'title').join('; '));
+
+  for(var i = 0, l = videos.length; i < l; i++) {
+    writeData(videos[i], 'harp/');
+  }
+}
+
+*/
+
+// Create harp template
+function createHarp(selection) {
+  writeSelectionDesc(selection);
+  //writeDataJSON(selection);
+  console.log('Writing the json is still broken :/')
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
