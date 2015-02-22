@@ -3,3 +3,4 @@ cache/*
 testcache/*
 
 npm-debug.log
+harp/*

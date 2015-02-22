@@ -174,9 +174,6 @@ function videosFromSelection(arr) {
 }
 
 
-
-
-
 // Downloader Helper Functions
 function downloadVideo(obj, dir, callback) {
     var url = obj['download_urls'].mp4;
@@ -246,71 +243,29 @@ function writeSelectionDesc(selection) {
 }
 
 
-/*
-function insertPage(oldData, newPage) {
-  oldContent = oldData.content;
-  
-  for(var i = 0, l = oldContent.length; i <= l; i++) {
-    if (i === l) {
-      console.log('parentnoexist' + newPage.title);
-      // This parent doesn't exist
-      newParent = {};
-      newParent.name = newPage['parent_id'];
-      newParent.pages = [newPage];
-      oldContent.push(newParent);
-    } else if (oldContent[i].name === newPage.parent_id) {
-       console.log('Oh look it found something' + newPage.title);
-      oldContent[i].pages.push(newPage);
-    } else console.log('I bloody hope this works');
+
+// Turns selection into an Arr of topicObj with topicObj kids 
+// who each have of videoObj kids. So videoParentParents 
+function vPPsFromSelection(arr) {
+  var videoParentParents = [];
+  for(var i = 0, l = arr.length; i < l; i++) {
+    if (arr[i].ancestor_ids.length === 3) {
+      videoParentParents.push(arr[i]);
+    } else if (arr[i].children) {
+      videoParentParents.push.apply(videoParentParents, vPPsFromSelection(arr[i].children));
+    }
   }
-  return oldData;
+  return videoParentParents;
 }
 
-// Stupidly large writing helper function
+
 function writeData(obj, dir, callback) {
-  var title = obj.title;
-  var slug = obj.slug;
-  var media = obj.id;
-  var parentslug = obj['ancestor_ids'].slice(3).join('/');
-  newPage = {};
-  newPage.slug = title;
-  newPage.media = media;
-
-  var dataFile = dir + parentslug + '/_data.json'; 
-
-  fs.exists(dataFile, function(exists) {
-    if (exists) {
-      // read it as obj and push to it
-      fs.readFile(dataFile, 'utf8', function (err,data) {
-        dataObj = JSON.parse(data);
-        console.log(dataObj);
-        newDataObj = insertPage(dataObj, newPage);
-
-        fs.writeFile(dataFile, JSON.stringify(newDataObj, null, 2), function(err) {
-          if(err) console.log('Line 277' + err);
-          else {
-            //console.log("Page added to " + dataFile);
-          }
-        });
-      });
-    } else {
-      // make new object
-      dataObj = {};
-      dataObj.topslug = obj['ancestor_ids'][2];
-      dataObj.topmedia = media;
-      
-      newParent = {};
-      newParent.name = obj['parent_id'];
-      newParent.pages = [newPage];
-      dataObj.content = [newParent];
-
-      // (over)write file 
-      fs.writeFile(dataFile, JSON.stringify(dataObj, null, 2), function(err) {
-        if(err) console.log('Line 296' + err);
-        else {
-          //console.log("Page added to " + dataFile);
-        }
-      });
+  var dataFile = dir + obj.id + '/_data.json';
+  
+  fs.writeFile(dataFile, JSON.stringify(obj, null, 2), function(err) {
+    if(err) console.log('writeData ' + err);
+    else {
+      console.log("_data.json added to " + dataFile);
     }
   });
 }
@@ -318,21 +273,21 @@ function writeData(obj, dir, callback) {
 
 // Writing the selection to data.json
 function writeDataJSON(selection) {
-  var videos = videosFromSelection(selection);
+  var vpp = vPPsFromSelection(selection);
   console.log("Writing " + getVals(selection, 'title').join('; '));
 
-  for(var i = 0, l = videos.length; i < l; i++) {
-    writeData(videos[i], 'harp/');
+  for(var i = 0, l = vpp.length; i < l; i++) {
+    writeData(vpp[i], 'harp/');
   }
 }
 
-*/
+
 
 // Create harp template
 function createHarp(selection) {
   writeSelectionDesc(selection);
-  //writeDataJSON(selection);
-  console.log('Writing the json is still broken :/')
+  writeDataJSON(selection);
+  //console.log('Writing the json is still broken :/')
 
 }
 
