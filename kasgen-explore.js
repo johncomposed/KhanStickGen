@@ -172,6 +172,23 @@ function videosFromSelection(arr) {
   }
   return videoArr;
 }
+// Turns selection into an Arr of topicObj with topicObj kids 
+// who each have of videoObj kids. So videoParentParents 
+function vPPsFromSelection(arr) {
+  var videoParentParents = [];
+  for(var i = 0, l = arr.length; i < l; i++) {
+    // I'd like to make a way to just add in videoParents... but there are clear problems with that.
+    // Duplicates with different children, the vPPs not having data besides id/children,ancestor_ids, etc. 
+    // I'd need to fix it higher up.
+    if (arr[i].ancestor_ids.length === 3) {
+      videoParentParents.push(arr[i]);
+    } else if (arr[i].children) {
+      videoParentParents.push.apply(videoParentParents, vPPsFromSelection(arr[i].children));
+    }
+  }
+  return videoParentParents;
+}
+
 
 
 // Downloader Helper Functions
@@ -231,36 +248,66 @@ function writeVideoDesc(obj, dir, callback) {
   });
 }
 
+// Index desc writer function
+function writeIndexDesc(obj, dir, callback) {
+  var desc = obj.description;
+  var path = dir + "/" + obj.id;
+  var oFile = dir + "/" + obj.id + "/index.md";
+
+  // Write the topic indexes
+  for(var i = 0, l = obj.children.length; i < l; i++) {
+    writeTopicIndexDesc(obj.children[i], path);
+  }
+
+  // No need to make dirs since writeVideoDesc's hack did that
+  fs.writeFile(oFile, desc, function(err) {
+    if(err) console.log(err);
+  });
+}
+
+// Topic desc writer function
+function writeTopicIndexDesc(obj, dir, callback) {
+  var desc = obj.description;
+  var oFile = dir + "/" + obj.id + "/index.md";
+
+  // No need to make dirs since writeVideoDesc's hack did that
+  fs.writeFile(oFile, desc, function(err) {
+    if(err) console.log(err);
+  });
+}
+
 
 // Desc Writer
 function writeSelectionDesc(selection) {
   var videos = videosFromSelection(selection);
+  var vPPS = vPPsFromSelection(selection);
   console.log("Writing " + getVals(selection, 'title').join('; '));
 
+  //Writing all the video descriptions
   for(var i = 0, l = videos.length; i < l; i++) {
     writeVideoDesc(videos[i], 'harp/');
   }
-}
-
-
-
-// Turns selection into an Arr of topicObj with topicObj kids 
-// who each have of videoObj kids. So videoParentParents 
-function vPPsFromSelection(arr) {
-  var videoParentParents = [];
-  for(var i = 0, l = arr.length; i < l; i++) {
-    if (arr[i].ancestor_ids.length === 3) {
-      videoParentParents.push(arr[i]);
-    } else if (arr[i].children) {
-      videoParentParents.push.apply(videoParentParents, vPPsFromSelection(arr[i].children));
-    }
+  //Writing the main index descriptions
+  for(var s = 0, t = vPPS.length; s < t; s++) {
+    writeIndexDesc(vPPS[s], 'harp/');
   }
-  return videoParentParents;
+  
 }
 
 
+
+// Taking in vPPs
 function writeData(obj, dir, callback) {
   var dataFile = dir + obj.id + '/_data.json';
+  
+  //Got to remove those pesky exercises
+  for(var i = 0, l = obj.children.length; i < l; i++) {
+    var parent = obj.children[i];
+    //Ewww eww eww
+    if (parent.children) {
+      parent.children = videosFromSelection(parent.children);
+    }
+  }
   
   fs.writeFile(dataFile, JSON.stringify(obj, null, 2), function(err) {
     if(err) console.log('writeData ' + err);
